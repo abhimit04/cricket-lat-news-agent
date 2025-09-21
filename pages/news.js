@@ -1,58 +1,51 @@
-import ThreeNewsVisualizer from './threeNewsVisualizer.js';
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 
-document.addEventListener('DOMContentLoaded', () => {
-  const visualizer = new ThreeNewsVisualizer('three-container');
+const ThreeNewsVisualizer = dynamic(
+  () => import("../components/ThreeNewsVisualizer"),
+  { ssr: false }
+);
 
-  async function loadNews() {
-    const output = document.getElementById('output');
-    output.innerHTML = "<div class='loading'>Loading news...</div>";
+export default function NewsPage() {
+  const [news, setNews] = useState([]);
+  const [summary, setSummary] = useState("");
+  const [loading, setLoading] = useState(true);
 
-    try {
-      const res = await fetch('/api/cricket-report');
-      const data = await res.json();
-
-      if (!data.success || data.count === 0) {
-        output.innerHTML = `<div class="error">No news available</div>`;
-        visualizer.createSpheres(); // fallback sphere
-        return;
+  useEffect(() => {
+    async function fetchNews() {
+      try {
+        const res = await fetch("/api/cricket-report");
+        const data = await res.json();
+        if (data.success) {
+          setNews(data.news);
+          setSummary(data.summary);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
+    }
+    fetchNews();
+  }, []);
 
-      // Update Three.js spheres
-      visualizer.createSpheres(data.news.map(n => n.headline));
-
-      // AI Summary
-      let html = `
-        <div class="summary">
-          <h2> Latest cricket news for you 📰</h2>
+  return (
+    <div style={{ padding: "20px" }}>
+      <h1>Cricket News 3D Visualizer 🏏</h1>
+      {loading && <p>Loading news...</p>}
+      {!loading && summary && (
+        <div style={{ marginBottom: "20px" }}>
+          <h2>AI Summary:</h2>
           <ul>
-            ${data.summary
-              .split("\n")
-              .map(line => line ? `<li>${line.replace(/^-/, "").trim()}</li>` : "")
-              .join("")}
+            {summary.split("\n").map((line, i) =>
+              line ? <li key={i}>{line.replace(/^-/, "").trim()}</li> : null
+            )}
           </ul>
         </div>
-      `;
-
-      // News Grid
-      html += `<div class="news-grid">`;
-      data.news.forEach(item => {
-        html += `
-          <div class="news-card">
-            <h2>${item.headline}</h2>
-            <p><strong>Source:</strong> ${item.source}</p>
-            <p>${item.summary}</p>
-            <a href="${item.link}" target="_blank">Read more 🔗</a>
-          </div>
-        `;
-      });
-      html += `</div>`;
-
-      output.innerHTML = html;
-    } catch (err) {
-      output.innerHTML = `<div class="error">Error loading news: ${err.message}</div>`;
-      visualizer.createSpheres(); // fallback sphere
-    }
-  }
-
-  window.loadNews = loadNews;
-});
+      )}
+      {!loading && news.length > 0 && (
+        <ThreeNewsVisualizer newsData={news} />
+      )}
+    </div>
+  );
+}
