@@ -1,51 +1,135 @@
-import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
-
-const ThreeNewsVisualizer = dynamic(
-  () => import("../components/ThreeNewsVisualizer"),
-  { ssr: false }
-);
+import { useEffect } from "react";
+import * as THREE from "three";
+import gsap from "gsap";
 
 export default function NewsPage() {
-  const [news, setNews] = useState([]);
-  const [summary, setSummary] = useState("");
-  const [loading, setLoading] = useState(true);
-
   useEffect(() => {
-    async function fetchNews() {
-      try {
-        const res = await fetch("/api/cricket-report");
-        const data = await res.json();
-        if (data.success) {
-          setNews(data.news);
-          setSummary(data.summary);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchNews();
+    // ✅ Make sure we are in the browser (no SSR issues)
+    if (typeof window === "undefined") return;
+
+    // --- THREE.JS SETUP ---
+    const container = document.getElementById("three-container");
+    if (!container) return;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      container.clientWidth / container.clientHeight,
+      0.1,
+      1000
+    );
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    // Create a cricket-ball-like sphere
+    const geometry = new THREE.SphereGeometry(1, 32, 32);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xff0000,
+      metalness: 0.3,
+      roughness: 0.7,
+    });
+    const sphere = new THREE.Mesh(geometry, material);
+    scene.add(sphere);
+
+    // Light setup
+    const light = new THREE.PointLight(0xffffff, 1, 100);
+    light.position.set(5, 5, 5);
+    scene.add(light);
+
+    camera.position.z = 5;
+
+    // Animate with GSAP (bounce + rotate)
+    gsap.to(sphere.rotation, {
+      x: Math.PI * 2,
+      y: Math.PI * 2,
+      repeat: -1,
+      ease: "none",
+      duration: 5,
+    });
+
+    gsap.to(sphere.position, {
+      y: 1,
+      duration: 1,
+      yoyo: true,
+      repeat: -1,
+      ease: "power1.inOut",
+    });
+
+    // Animation loop
+    const animate = () => {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    // ✅ Cleanup on unmount
+    return () => {
+      container.removeChild(renderer.domElement);
+      renderer.dispose();
+      geometry.dispose();
+      material.dispose();
+    };
   }, []);
 
-  return (
-    <div style={{ padding: "20px" }}>
-      <h1>Cricket News 3D Visualizer 🏏</h1>
-      {loading && <p>Loading news...</p>}
-      {!loading && summary && (
-        <div style={{ marginBottom: "20px" }}>
-          <h2>AI Summary:</h2>
+  async function loadNews() {
+    const output = document.getElementById("output");
+    output.innerHTML = "<div>Loading...</div>";
+
+    try {
+      const res = await fetch("/api/cricket-report");
+      const data = await res.json();
+
+      if (!data.success || data.count === 0) {
+        output.innerHTML = `<div>No news available</div>`;
+        return;
+      }
+
+      output.innerHTML = `
+        <div class="summary">
+          <h2>Latest cricket news 📰</h2>
           <ul>
-            {summary.split("\n").map((line, i) =>
-              line ? <li key={i}>{line.replace(/^-/, "").trim()}</li> : null
-            )}
+            ${data.summary
+              .split("\n")
+              .map((line) => (line ? `<li>${line.replace(/^-/, "").trim()}</li>` : ""))
+              .join("")}
           </ul>
         </div>
-      )}
-      {!loading && news.length > 0 && (
-        <ThreeNewsVisualizer newsData={news} />
-      )}
+      `;
+    } catch (err) {
+      output.innerHTML = `<div>Error loading news: ${err.message}</div>`;
+    }
+  }
+
+  return (
+    <div>
+      <div
+        id="three-container"
+        style={{
+          width: "100%",
+          height: "400px",
+          background: "rgba(0,0,0,0.4)",
+          borderRadius: "16px",
+        }}
+      ></div>
+
+      <main style={{ textAlign: "center", marginTop: "20px" }}>
+        <button
+          onClick={loadNews}
+          style={{
+            padding: "12px 24px",
+            background: "#1565c0",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+          }}
+        >
+          View Latest News
+        </button>
+        <div id="output" style={{ marginTop: "20px" }}></div>
+      </main>
     </div>
   );
 }
